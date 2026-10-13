@@ -1,0 +1,11 @@
+{
+  "location": "auto",
+  "language": "auto",
+  "hello_sync": false,
+  "paused": false,
+  "desktops": {
+    "1": {"mode": "sunpath", "dir": "~/Pictures/wp/desktop1", "fade": true},
+    "2": {"mode": "slideshow", "dir": "~/Pictures/wp/desktop2", "minutes": 10},
+    "3": {"mode": "off"}
+  }
+}

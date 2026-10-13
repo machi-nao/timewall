@@ -1,0 +1,10 @@
+[Unit]
+Description=Run timewall every 15 minutes
+
+[Timer]
+OnStartupSec=10
+OnCalendar=*:0/1
+Persistent=true
+
+[Install]
+WantedBy=timers.target

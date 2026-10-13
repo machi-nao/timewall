@@ -1,0 +1,6 @@
+[Unit]
+Description=Time-of-day wallpaper
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/timewall.py
