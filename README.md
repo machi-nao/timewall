@@ -5,6 +5,10 @@
 ![TimeWall settings (English)](docs/settings-en.png)
 ![TimeWall 設定画面(日本語)](docs/settings-ja.png)
 
+![TimeWall demo](docs/demo.gif)
+
+*Illustration: the 9 sample images in order, one per second. In real use the switching follows sunrise/sunset. / イメージ動画です。実際の切り替えは、日の出・日の入りに合わせて行われます。*
+
 ---
 
 ## English
