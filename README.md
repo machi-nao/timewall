@@ -121,7 +121,7 @@ A systemd timer runs `timewall.py` every minute, and a small watcher runs it aga
 - Only the desktop you are currently on is updated. Other desktops update when you switch to them.
 - Plasma updates may change the scripting interface and break the wallpaper change.
 - Changing the number of desktops from the app is experimental.
-- `install.sh` has not yet been tested on a clean system.
+- `install.sh` was tested on a second pearOS NiceC0re USB (fresh clone from GitHub). Other distributions are untested.
 
 ### Images
 
@@ -229,7 +229,7 @@ systemd のタイマーが、1分ごとに `timewall.py` を実行します。�
 - 更新されるのは、いま表示しているデスクトップだけです。ほかのデスクトップは、切り替えたときに更新されます。
 - Plasma のアップデートで、スクリプト機能が変わると、壁紙の変更が動かなくなる可能性があります。
 - アプリからデスクトップの数を変える機能は、実験的です。
-- `install.sh` は、まっさらな環境では、まだ試していません。
+- `install.sh` は、別の pearOS NiceC0re の USB で、GitHub から取得して動作を確認しました。ほかのディストリビューションは未確認です。
 
 ### 画像について
 
