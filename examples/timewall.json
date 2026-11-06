@@ -3,9 +3,12 @@
   "language": "auto",
   "hello_sync": false,
   "paused": false,
+  "aerial": {"dir": "~/Videos/aerial", "mode": "same"},
   "desktops": {
-    "1": {"mode": "sunpath", "dir": "~/Pictures/wp/desktop1", "fade": true},
-    "2": {"mode": "slideshow", "dir": "~/Pictures/wp/desktop2", "minutes": 10},
-    "3": {"mode": "off"}
+    "1": {"mode": "sunpath", "dir": "~/Pictures/wp/desktop1", "fade": true, "twilight_min": 30},
+    "2": {"mode": "slideshow", "dir": "~/Pictures/wp/desktop2", "minutes": 10, "fade": true, "slideshow_source": "auto"},
+    "3": {"mode": "slideshow", "dir": "~/Pictures/wp/desktop3", "minutes": 10, "slideshow_source": "manual", "slideshow_dir": "~/Pictures/wp/desktop3-slideshow"},
+    "4": {"mode": "schedule", "dir": "~/Pictures/wp/desktop4", "times": ["07:00", "17:00", "19:00"], "fade": true},
+    "5": {"mode": "off"}
   }
 }

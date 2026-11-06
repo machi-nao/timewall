@@ -2,3 +2,5 @@
 Backups/
 *.bak*
 __pycache__/
+*.pre-*
+*~

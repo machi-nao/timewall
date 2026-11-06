@@ -1,0 +1,125 @@
+--- LockScreenUi.qml.orig
++++ LockScreenUi.qml
+@@ -5,6 +5,7 @@
+     SPDX-License-Identifier: GPL-2.0-or-later
+ */
+ 
++import QtMultimedia
+ import QtQml
+ import QtQuick
+ import QtQuick.Controls as QQC2
+@@ -161,9 +162,84 @@
+ 
+     // ── wallpaper source for graphical effects ─────────────────────────────
+     // Used by blur and contrast effects. Prefers wallpaper plugin, falls back to Image.
++    // -- Aerial video background --
++    readonly property bool aerialActive: aerialPlayer.mediaStatus !== MediaPlayer.NoMedia && aerialPlayer.mediaStatus !== MediaPlayer.InvalidMedia
++    property bool aerialFrozen: false
++    property bool aerialAwake: false  // AERIAL-V5
++    property bool aerialArmed: false
++    property real aerialSx: -1
++    property real aerialSy: -1
++
++    Timer { interval: 1500; running: true; onTriggered: lockScreenUi.aerialArmed = true }
++
++    MediaPlayer {
++        id: aerialPlayer
++        source: "file://@HOME@/.cache/aerial/current.mp4"
++        videoOutput: aerialVideo
++        loops: MediaPlayer.Infinite
++        property bool seeked: false  // AERIAL-V4
++        onMediaStatusChanged: {
++            if (mediaStatus === MediaPlayer.LoadedMedia && !seeked && duration > 0) {
++                seeked = true
++                position = Math.floor(Math.random() * duration * 0.95)
++            }
++        }
++        Component.onCompleted: play()
++    }
++    VideoOutput {
++        id: aerialVideo
++        anchors.fill: parent
++        visible: lockScreenUi.aerialActive
++        fillMode: VideoOutput.PreserveAspectCrop
++    }
++    Image {
++        id: aerialStill
++        anchors.fill: parent
++        fillMode: Image.PreserveAspectCrop
++        cache: false
++        visible: lockScreenUi.aerialFrozen && status === Image.Ready
++    }
++
++    function aerialWake() {
++        console.log("aerial: wake (focus=" + passwordField.activeFocus + ")")
++        Window.window.requestActivate()
++        passwordField.forceActiveFocus()
++        authenticator.startAuthenticating()
++    }
++    function aerialDoFreeze() {
++        if (aerialFrozen) return
++        aerialFrozen = true
++        aerialPlayer.pause()
++        aerialVideo.grabToImage(function(r) {
++            var ok = r.saveToFile("@HOME@/.cache/lockframe.png")
++            console.log("aerial: frame saved =", ok)
++            if (ok) aerialStill.source = "file://@HOME@/.cache/lockframe.png"
++        })
++    }
++    function aerialFreeze(x, y) {
++        if (!passwordField.activeFocus) aerialWake()
++        if (!aerialActive || aerialFrozen || !aerialArmed) return
++        if (aerialSx < 0) { aerialSx = x; aerialSy = y; return }
++        if (Math.abs(x - aerialSx) + Math.abs(y - aerialSy) < 10) return
++        console.log("aerial: freeze by mouse")
++        aerialWake()
++        aerialDoFreeze()
++    }
++    // 止めたキーなら true を返す(そのキーは入力として使わない)
++    function aerialFreezeKey() {
++        console.log("aerial: key event armed=" + aerialArmed + " frozen=" + aerialFrozen)
++        if (!passwordField.activeFocus) aerialWake()  // AERIAL-V6
++        if (!aerialActive || aerialFrozen || !aerialArmed) return false
++        console.log("aerial: freeze by key")
++        aerialWake()  // AERIAL-V7
++        aerialDoFreeze()
++        return true
++    }
++
+     ShaderEffectSource {
+         id: wallpaperSource
+         sourceItem: {
++            if (lockScreenUi.aerialActive) return (lockScreenUi.aerialFrozen && aerialStill.status === Image.Ready) ? aerialStill : aerialVideo
+             if (typeof wallpaper !== "undefined" && wallpaper) return wallpaper
+             if (lockScreenUi.desktopWallpaperPath !== "") return wallpaperBg
+             return null
+@@ -291,11 +367,13 @@
+             passwordField.forceActiveFocus()
+             authenticator.startAuthenticating()
+         }
+-        onPositionChanged: {
++        onPositionChanged: mouse => {
++            lockScreenUi.aerialFreeze(mouse.x, mouse.y)
+             Window.window.requestActivate()
+             authenticator.startAuthenticating()
+         }
+         Keys.onPressed: event => {
++            lockScreenUi.aerialFreezeKey()
+             Window.window.requestActivate()
+             authenticator.startAuthenticating()
+             event.accepted = false
+@@ -415,9 +493,12 @@
+                     focus: true
+                     text: PasswordSync.password
+ 
+-                    Keys.onReturnPressed: authenticator.respond(text)
+-                    Keys.onEnterPressed:  authenticator.respond(text)
++                    Keys.priority: Keys.BeforeItem  // AERIAL-PRIO
++                    Keys.onPressed: event => { event.accepted = lockScreenUi.aerialFreezeKey() }  // AERIAL-KEY
++                    Keys.onReturnPressed: { if (!lockScreenUi.aerialFreezeKey()) authenticator.respond(text) }  // AERIAL-ENTER
++                    Keys.onEnterPressed: { if (!lockScreenUi.aerialFreezeKey()) authenticator.respond(text) }  // AERIAL-ENTER
+                     Keys.onEscapePressed: {
++                        lockScreenUi.aerialFreezeKey()
+                         clear()
+                         text = Qt.binding(() => PasswordSync.password)
+                         root.clearPassword()

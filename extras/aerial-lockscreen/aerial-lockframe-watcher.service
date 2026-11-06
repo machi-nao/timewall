@@ -1,0 +1,11 @@
+[Unit]
+Description=TimeWall Aerial: keep the lock screen frame after unlock
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/aerial-lockframe-watcher.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -14,8 +14,36 @@ CFG = HOME / ".config/timewall.json"
 EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MODE_KEYS = ["off", "static", "slideshow", "schedule", "sunpath"]
 FOLDER_MODES = ("slideshow", "schedule", "sunpath")
+try:  # SUN5
+    QPushButton
+except NameError:
+    try:
+        from PyQt6.QtWidgets import QPushButton
+    except ImportError:
+        from PySide6.QtWidgets import QPushButton
+SUN5_DIRS = ["1_before_sunrise", "2_sunrise", "3_day", "4_sunset", "5_after_sunset"]
+
+def sun5_sections(folder):
+    base = Path(folder).expanduser()
+    if not folder or not any((base / n).is_dir() for n in SUN5_DIRS):
+        return None
+    return [list_images(str(base / n)) if (base / n).is_dir() else [] for n in SUN5_DIRS]
 MAX_DESK = 8
 THUMB = QSize(120, 68)
+
+def auto_slideshow_images(base):  # SLIDESRC
+    b = Path(base).expanduser()
+    out, seen = [], set()
+    for folder in [b] + [b / n for n in SUN5_DIRS]:
+        for f in list_images(str(folder)):
+            try:
+                key = (f.name.lower(), f.stat().st_size)
+            except OSError:
+                continue
+            if key not in seen:
+                seen.add(key)
+                out.append(f)
+    return out
 
 # ---------- 言語辞書(言語を足すときは、en をコピーして翻訳する)----------
 STR = {
@@ -28,7 +56,7 @@ STR = {
         "desk_count": "デスクトップ数(1〜8)",
         "change_count": "数を変更",
         "hello": "helloの壁紙と連動する",
-        "paused": "全体を一時停止する",
+        "paused": "timewallの自動切り替えを一時停止する(Aerialは動作します)",
         "language": "言語",
         "lang_auto": "自動(システムに合わせる)",
         "tab": "デスクトップ {n}",
@@ -38,8 +66,8 @@ STR = {
         "mode_off": "停止(壁紙に触らない)",
         "mode_static": "固定(1枚)",
         "mode_slideshow": "スライドショー",
-        "mode_schedule": "時刻指定(最大12枚)",
-        "mode_sunpath": "日の出・日の入り連動(最大12枚)",
+        "mode_schedule": "時刻指定(最大100枚)",
+        "mode_sunpath": "日の出・日の入り連動(最大100枚)",
         "folder": "画像フォルダ",
         "pick": "選ぶ",
         "open_folder": "フォルダを開く",
@@ -50,9 +78,19 @@ STR = {
         "times_ph": "例: 06:00, 10:00, 16:00, 19:00(画像と同じ数まで)",
         "fade": "なめらかに混ぜる(フェード)",
         "day_count": "日中用の枚数",
+        "twilight": "日の出・日の入りの幅(前後)",
+        "sun5_make": "5区間のフォルダを作る",
+        "sun5_nofolder": "先に画像フォルダを選んでください",
+        "sun5_info": "5区間方式 → {c}(空の区間は前の画像を続けます)",
+        "sun5_n0": "日の出前", "sun5_n1": "日の出", "sun5_n2": "日中", "sun5_n3": "日の入り", "sun5_n4": "日没後",
+        "sun5_unit": "{n}枚",
+        "src_label": "画像の元",
+        "src_auto": "自動(他のモードと同じ画像)",
+        "src_manual": "手動(専用フォルダの画像)",
+        "src_info_auto": "自動: {n}枚(フォルダ直下と5つのサブフォルダ)",
         "day_auto": "自動(昼夜の長さで決める)",
         "info_folder": "フォルダ内の画像: {n}枚(ファイル名の順に使います)",
-        "info_over12": " ※使われるのは先頭の12枚までです",
+        "info_over12": " ※使われるのは先頭の100枚までです",
         "info_off": "このデスクトップの壁紙には触りません",
         "preview": "動きを確認する(2秒ごと・2周)",
         "prev_stop": "確認を止める",
@@ -63,7 +101,7 @@ STR = {
         "dlg_image": "固定する画像を選ぶ",
         "img_filter": "画像 (*.jpg *.jpeg *.png *.webp)",
         "err_image": "デスクトップ{n}: 固定する画像を選んでください",
-        "err_times_count": "デスクトップ{n}: 時刻を1〜12個入れてください",
+        "err_times_count": "デスクトップ{n}: 時刻を1〜100個入れてください",
         "err_time_bad": "デスクトップ{n}: 時刻「{t}」が正しくありません",
         "count_done": "デスクトップ数を {n} にしました",
         "count_fail": "デスクトップ数を変更できません",
@@ -91,8 +129,8 @@ STR = {
         "mode_off": "Off (leave the wallpaper alone)",
         "mode_static": "Fixed (one image)",
         "mode_slideshow": "Slideshow",
-        "mode_schedule": "Time schedule (up to 12 images)",
-        "mode_sunpath": "Sunrise / sunset (up to 12 images)",
+        "mode_schedule": "Time schedule (up to 100 images)",
+        "mode_sunpath": "Sunrise / sunset (up to 100 images)",
         "folder": "Image folder",
         "pick": "Browse",
         "open_folder": "Open folder",
@@ -103,9 +141,19 @@ STR = {
         "times_ph": "e.g. 06:00, 10:00, 16:00, 19:00 (up to the number of images)",
         "fade": "Cross-fade between images",
         "day_count": "Daytime images",
+        "twilight": "Sunrise/sunset width (+/- min)",
+        "sun5_make": "Create 5 section folders",
+        "sun5_nofolder": "Choose an image folder first",
+        "sun5_info": "5-section mode -> {c} (empty sections keep the previous image)",
+        "sun5_n0": "Before sunrise", "sun5_n1": "Sunrise", "sun5_n2": "Day", "sun5_n3": "Sunset", "sun5_n4": "After sunset",
+        "sun5_unit": "{n} img",
+        "src_label": "Image source",
+        "src_auto": "Auto (same images as the other modes)",
+        "src_manual": "Manual (dedicated folder)",
+        "src_info_auto": "Auto: {n} images (folder + 5 sections)",
         "day_auto": "Auto (from day/night length)",
         "info_folder": "Images in folder: {n} (used in file name order)",
-        "info_over12": " * only the first 12 are used",
+        "info_over12": " * only the first 100 are used",
         "info_off": "This desktop's wallpaper is left alone",
         "preview": "Preview the motion (every 2 s, 2 rounds)",
         "prev_stop": "Stop preview",
@@ -116,7 +164,7 @@ STR = {
         "dlg_image": "Choose a fixed image",
         "img_filter": "Images (*.jpg *.jpeg *.png *.webp)",
         "err_image": "Desktop {n}: please choose a fixed image",
-        "err_times_count": "Desktop {n}: enter 1 to 12 times",
+        "err_times_count": "Desktop {n}: enter 1 to 100 times",
         "err_time_bad": 'Desktop {n}: time "{t}" is not valid',
         "count_done": "Desktop count is now {n}",
         "count_fail": "Cannot change the desktop count",
@@ -143,6 +191,107 @@ LANG = "en"
 def t(key, **kw):
     s = STR[LANG].get(key) or STR["en"][key]
     return s.format(**kw) if kw else s
+
+# ---------- Aerial(ロック画面の動画)AERIAL-UI ----------
+AT = {
+    "ja": {
+        "a_header": "Aerial(ロック画面の動画)",
+        "c_chime": "このデスクトップでロックチャイムを鳴らす",
+        "a_use": "このデスクトップでAerialを使う",
+        "a_src": "動画の選び方",
+        "a_src_default": "全体の設定に従う",
+        "a_src_file": "指定した動画",
+        "a_src_random": "ランダム",
+        "a_video": "動画",
+        "s_tw": "① timewall(基本の壁紙)",
+        "s_aerial": "② Aerial(ロック画面の動画)",
+        "s_chime": "③ ロックチャイム",
+        "s_after": "④ 解除後の壁紙",
+        "a_none": "なし(pearOS標準のロック画面)",
+        "a_after": "解除後の壁紙",
+        "a_after_frame": "Aerialで止めたフレーム",
+        "a_after_tw": "timewallの画像",
+        "err_video": "Desktop {n}: Aerialの動画を選んでください",
+        "g_mode": "Aerial: 全体のデフォルト",
+        "g_same": "すべて同じ動画",
+        "g_random": "ランダムに選ぶ",
+        "g_video": "Aerial: すべて同じ動画",
+        "g_inherit": "止めたフレームを、解除後の壁紙にする",
+        "no_videos": "(動画がありません: ~/Videos/aerial)",
+    },
+    "en": {
+        "a_header": "Aerial (lock screen video)",
+        "c_chime": "Play the lock chime on this desktop",
+        "a_use": "Use Aerial on this desktop",
+        "a_src": "Video selection",
+        "a_src_default": "Follow the global setting",
+        "a_src_file": "A specific video",
+        "a_src_random": "Random",
+        "a_video": "Video",
+        "s_tw": "1. timewall (base wallpaper)",
+        "s_aerial": "2. Aerial (lock screen video)",
+        "s_chime": "3. Lock chime",
+        "s_after": "4. Wallpaper after unlock",
+        "a_none": "None (pearOS default lock screen)",
+        "a_after": "Wallpaper after unlock",
+        "a_after_frame": "The frame Aerial stopped on",
+        "a_after_tw": "The timewall image",
+        "err_video": "Desktop {n}: please choose an Aerial video",
+        "g_mode": "Aerial: global default",
+        "g_same": "Same video everywhere",
+        "g_random": "Pick randomly",
+        "g_video": "Aerial: the same video",
+        "g_inherit": "Use the frozen frame as the wallpaper after unlock",
+        "no_videos": "(no videos in ~/Videos/aerial)",
+    },
+}
+
+
+def ta(key, **kw):
+    s = AT.get(LANG, AT["en"]).get(key) or AT["en"][key]
+    return s.format(**kw) if kw else s
+
+
+def tilde(p):
+    s, h = str(p), str(HOME)
+    return "~" + s[len(h):] if s.startswith(h + "/") else s
+
+
+def aerial_videos():
+    d = Path(load().get("aerial", {}).get("dir", "~/Videos/aerial")).expanduser()
+    exts = (".mp4", ".webm", ".mkv", ".mov")
+    return sorted(p for p in d.iterdir() if p.suffix.lower() in exts) if d.is_dir() else []
+
+
+def fill_video_combo(combo, current=None):
+    vids = [tilde(p) for p in aerial_videos()]
+    cur = tilde(Path(current).expanduser()) if current else None
+    for v in vids:
+        combo.addItem(Path(v).name, v)
+    if cur and cur not in vids:
+        combo.addItem(Path(cur).name + " (?)", cur)
+    if not vids and not cur:
+        combo.addItem(ta("no_videos"), "")
+    if cur:
+        combo.setCurrentIndex(max(0, combo.findData(cur)))
+
+
+def read_inherit():
+    try:
+        r = subprocess.run(["kreadconfig6", "--file", "pearos-chimesrc", "--group", "Aerial",
+                            "--key", "InheritFrame", "--default", "true"],
+                           capture_output=True, text=True, timeout=5)
+        return r.stdout.strip().lower() != "false"
+    except Exception:
+        return True
+
+
+def write_inherit(on):
+    try:
+        subprocess.run(["kwriteconfig6", "--file", "pearos-chimesrc", "--group", "Aerial",
+                        "--key", "InheritFrame", "true" if on else "false"], timeout=5)
+    except Exception:
+        pass
 
 
 # ---------- 設定・KWin(画面に依存しない部分)----------
@@ -240,7 +389,14 @@ class DeskTab(QWidget):
             self.mode.addItem(t("mode_" + k), k)
         self.mode.setCurrentIndex(max(0, self.mode.findData(mode)))
 
-        self.folder = QLineEdit(self.orig.get("dir", f"~/Pictures/wp/desktop{n}"))
+        # SLIDEDIR2: separate folders for slideshow and the other modes
+        _def_main = f"~/Pictures/wp/desktop{n}"
+        _def_slide = f"~/Pictures/wp/desktop{n}-slideshow"
+        _main = self.orig.get("dir") or _def_main
+        _slide = self.orig.get("slideshow_dir") or _def_slide
+        self.dir_store = {"main": _main, "slide": _slide}
+        self._last_mode = None
+        self.folder = QLineEdit(_slide if self.orig.get("mode") == "slideshow" else _main)
         b_pick = QPushButton(t("pick"))
         b_open = QPushButton(t("open_folder"))
         fw = QWidget()
@@ -271,9 +427,21 @@ class DeskTab(QWidget):
         self.fade.setChecked(bool(self.orig.get("fade", False)))
 
         self.daycount = QSpinBox()
-        self.daycount.setRange(0, 12)
+        self.daycount.setRange(0, 100)
         self.daycount.setSpecialValueText(t("day_auto"))
         self.daycount.setValue(int(self.orig.get("day_count", 0)))
+        self.twilight = QSpinBox()  # SUN5
+        self.twilight.setRange(0, 120)
+        self.twilight.setSuffix(t("min_suffix"))
+        self.twilight.setValue(int(self.orig.get("twilight_min", 30)))
+        self.sun5btn = QPushButton(t("sun5_make"))
+        self.sun5btn.clicked.connect(self.make_sun5)
+        self.slidesrc = QComboBox()  # SLIDESRC
+        self.slidesrc.addItem(t("src_auto"), "auto")
+        self.slidesrc.addItem(t("src_manual"), "manual")
+        _si = self.slidesrc.findData(self.orig.get("slideshow_source") or "auto")
+        self.slidesrc.setCurrentIndex(max(0, _si))
+        self.slidesrc.currentIndexChanged.connect(self.refresh)
 
         self.info = QLabel()
         self.info.setStyleSheet("color: gray;")
@@ -286,13 +454,49 @@ class DeskTab(QWidget):
         self.thumbs.setMinimumHeight(190)
 
         self.form = QFormLayout()
+        self.form.addRow(QLabel("<b>" + ta("s_tw") + "</b>"))
         self.form.addRow(QLabel(t("mode")), self.mode)
+        self._row("slidesrc", t("src_label"), self.slidesrc)
         self._row("folder", t("folder"), fw)
         self._row("image", t("image"), iw)
         self._row("minutes", t("interval"), self.minutes)
         self._row("times", t("times"), self.times)
         self._row("fade", "", self.fade)
         self._row("daycount", t("day_count"), self.daycount)
+        self._row("twilight", t("twilight"), self.twilight)
+        self._row("sun5btn", "", self.sun5btn)
+        # AERIAL-UI2
+        ao = self.orig.get("aerial", {}) or {}
+        src0 = ao.get("source", "default")
+        if ao.get("use") is False:
+            src0 = "none"
+        elif src0 == "default":
+            _g = load().get("aerial", {}) or {}
+            src0 = "random" if _g.get("mode", "same") == "random" else "file"
+            if src0 == "file" and not ao.get("video"):
+                ao = dict(ao, video=_g.get("video"))
+        self.a_src = QComboBox()
+        self.a_src.addItem(ta("a_src_file"), "file")
+        self.a_src.addItem(ta("a_src_random"), "random")
+        self.a_src.addItem(ta("a_none"), "none")
+        self.a_src.setCurrentIndex(max(0, self.a_src.findData(src0)))
+        self.a_video = QComboBox()
+        fill_video_combo(self.a_video, ao.get("video"))
+        self.a_after = QComboBox()
+        self.a_after.addItem(ta("a_after_frame"), "frame")
+        self.a_after.addItem(ta("a_after_tw"), "timewall")
+        self.a_after.setCurrentIndex(max(0, self.a_after.findData(ao.get("after", "frame"))))
+        self.chime = QCheckBox(ta("c_chime"))  # AERIAL-CHIME
+        self.chime.setChecked(bool(self.orig.get("chime", True)))
+        self.form.addRow(QLabel("<b>" + ta("s_aerial") + "</b>"))
+        self.form.addRow(QLabel(ta("a_src")), self.a_src)
+        self.form.addRow(QLabel(ta("a_video")), self.a_video)
+        self.form.addRow(QLabel("<b>" + ta("s_chime") + "</b>"))
+        self.form.addRow("", self.chime)
+        self.form.addRow(QLabel("<b>" + ta("s_after") + "</b>"))
+        self.form.addRow(QLabel(ta("a_after")), self.a_after)
+        self.a_src.currentIndexChanged.connect(self._aerial_toggle)
+        self._aerial_toggle()
 
         lay = QVBoxLayout(self)
         lay.addLayout(self.form)
@@ -313,6 +517,11 @@ class DeskTab(QWidget):
         b_img.clicked.connect(self.pick_image)
         self.refresh()
 
+    def _aerial_toggle(self, *_):
+        s = self.a_src.currentData()
+        self.a_video.setEnabled(s == "file")
+        self.a_after.setEnabled(s != "none")
+
     def _row(self, key, text, widget):
         lab = QLabel(text)
         self.form.addRow(lab, widget)
@@ -320,20 +529,46 @@ class DeskTab(QWidget):
 
     def refresh(self):
         m = self.mode.currentData()
-        show = {"folder": m in FOLDER_MODES, "image": m == "static",
+        g = "slide" if m == "slideshow" else "main"  # SLIDEDIR2
+        lg = getattr(self, "_last_mode", None)
+        if lg is not None:
+            lgg = "slide" if lg == "slideshow" else "main"
+            if lgg != g:
+                self.dir_store[lgg] = self.folder.text().strip()
+                self.folder.setText(self.dir_store[g])
+        self._last_mode = m
+        show = {"folder": (m in FOLDER_MODES) and not (m == "slideshow" and self.slidesrc.currentData() == "auto"), "image": m == "static",
                 "minutes": m == "slideshow", "times": m == "schedule",
-                "fade": m in ("schedule", "sunpath"), "daycount": m == "sunpath"}
+                "fade": m in ("schedule", "sunpath", "slideshow"), "daycount": m == "sunpath",
+                "twilight": m == "sunpath", "sun5btn": m == "sunpath",
+                "slidesrc": m == "slideshow"}
         for k, (lab, w) in self.rows.items():
             lab.setVisible(show[k])
             w.setVisible(show[k])
         files = []
+        secs = None  # SUN5
         if m == "static" and self.image.text().strip():
             files = [Path(self.image.text().strip()).expanduser()]
         elif m in FOLDER_MODES:
             files = list_images(self.folder.text().strip())
+            if m == "sunpath":  # SUN5
+                secs = sun5_sections(self.folder.text().strip())
+                if secs is not None:
+                    files = [f for sec in secs for f in sec]
+        if m == "slideshow" and self.slidesrc.currentData() == "auto":  # SLIDESRC
+            files = auto_slideshow_images(self.dir_store["main"])
+        if m == "sunpath":
+            for w in self.rows["daycount"]:
+                w.setVisible(secs is None)
         if m in FOLDER_MODES:
             msg = t("info_folder", n=len(files))
-            if m in ("schedule", "sunpath") and len(files) > 12:
+            if m == "slideshow" and self.slidesrc.currentData() == "auto":
+                msg = t("src_info_auto", n=len(files))
+            if secs is not None:
+                cnt = " / ".join(t("sun5_n%d" % i) + " " + t("sun5_unit", n=len(sec))
+                                 for i, sec in enumerate(secs))
+                msg = t("sun5_info", c=cnt)
+            elif m in ("schedule", "sunpath") and len(files) > 100:
                 msg += t("info_over12")
             self.info.setText(msg)
         elif m == "off":
@@ -347,6 +582,17 @@ class DeskTab(QWidget):
             self.thumbs.addItem(QListWidgetItem(QIcon(pm), f"{i + 1}. {f.name}"))
         self.thumbs.setVisible(m != "off")
 
+    def make_sun5(self):  # SUN5
+        txt = self.folder.text().strip()
+        if not txt:
+            self.info.setText(t("sun5_nofolder"))
+            return
+        base = Path(txt).expanduser()
+        for n in SUN5_DIRS:
+            (base / n).mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["xdg-open", str(base)])
+        self.refresh()
+
     def toggle_preview(self):
         if getattr(self, "timer", None) and self.timer.isActive():
             self.stop_preview()
@@ -357,7 +603,7 @@ class DeskTab(QWidget):
         m = self.mode.currentData()
         files = [f for f in getattr(self, "cur_files", []) if f.exists()]
         if m in ("schedule", "sunpath"):
-            files = files[:12]
+            files = files[:100]
         if m == "off" or not files:
             self.info.setText(t("prev_none"))
             return
@@ -419,9 +665,16 @@ class DeskTab(QWidget):
 
     def get(self):
         m = self.mode.currentData()
-        d = {"mode": m}
-        if m in FOLDER_MODES:
-            d["dir"] = self.folder.text().strip()
+        d = {k: v for k, v in self.orig.items()
+             if k not in ("mode", "dir", "image", "minutes", "times", "fade", "day_count", "twilight_min", "slideshow_dir", "slideshow_source", "aerial")}
+        d["mode"] = m
+        # SLIDEDIR2: remember both folders
+        _g = "slide" if m == "slideshow" else "main"
+        _st = dict(self.dir_store)
+        _st[_g] = self.folder.text().strip()
+        d["dir"] = _st["main"]
+        d["slideshow_dir"] = _st["slide"]
+        d["slideshow_source"] = self.slidesrc.currentData()
         if m == "static":
             if not self.image.text().strip():
                 raise ValueError(t("err_image", n=self.n))
@@ -430,7 +683,7 @@ class DeskTab(QWidget):
             d["minutes"] = self.minutes.value()
         if m == "schedule":
             ts = [x.strip() for x in self.times.text().replace("、", ",").split(",") if x.strip()]
-            if not ts or len(ts) > 12:
+            if not ts or len(ts) > 100:
                 raise ValueError(t("err_times_count", n=self.n))
             fixed = []
             for x in ts:
@@ -439,10 +692,20 @@ class DeskTab(QWidget):
                     raise ValueError(t("err_time_bad", n=self.n, t=x))
                 fixed.append(f"{int(mt.group(1)):02d}:{mt.group(2)}")
             d["times"] = sorted(fixed)
-        if m in ("schedule", "sunpath"):
+        if m in ("schedule", "sunpath", "slideshow"):
             d["fade"] = self.fade.isChecked()
         if m == "sunpath" and self.daycount.value() > 0:
             d["day_count"] = self.daycount.value()
+        if m == "sunpath":
+            d["twilight_min"] = self.twilight.value()
+        a = {"source": self.a_src.currentData(), "after": self.a_after.currentData()}
+        v = self.a_video.currentData()
+        if a["source"] == "file" and not v:
+            raise ValueError(ta("err_video", n=self.n))
+        if v:
+            a["video"] = v
+        d["aerial"] = a
+        d["chime"] = self.chime.isChecked()
         return d
 
 
@@ -450,7 +713,7 @@ class Main(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(t("title"))
-        self.resize(760, 640)
+        self.resize(760, 900)
         self.cfg = load()
         self.lang_setting = self.cfg.get("language", "auto")
 
@@ -549,12 +812,18 @@ class Main(QMainWindow):
             cfg["hello_sync"] = self.hello.isChecked()
             cfg["paused"] = self.paused.isChecked()
             cfg["language"] = self.langbox.currentData()
+            ag = cfg.get("aerial", {}) or {}  # AERIAL-UI2
+            ag.setdefault("dir", "~/Videos/aerial")
+            cfg["aerial"] = ag
+            write_inherit(True)
             cfg.setdefault("desktops", {})
             for n in range(1, kwin_count() + 1):
                 dd = self.tabs[n].get()
                 cfg["desktops"][str(n)] = dd
                 if dd.get("dir"):
                     Path(dd["dir"]).expanduser().mkdir(parents=True, exist_ok=True)
+                if dd.get("slideshow_dir"):
+                    Path(dd["slideshow_dir"]).expanduser().mkdir(parents=True, exist_ok=True)
         except Exception as e:
             QMessageBox.warning(self, t("input_check"), str(e))
             return

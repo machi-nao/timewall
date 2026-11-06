@@ -9,13 +9,21 @@ from astral.sun import sun
 HOME = Path.home()
 CACHE = HOME / ".cache/timewall"
 CACHE.mkdir(parents=True, exist_ok=True)
+import fcntl  # SUN5c: run one instance at a time
+_runlock = open(CACHE / "run.lock", "w")
+fcntl.flock(_runlock, fcntl.LOCK_EX)
 EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 HELLO = "/usr/local/share/hello-wallpaper.jpg"
+# AERIAL-HOOK
+LOCKFRAME = HOME / ".cache/lockframe.png"
+FRAMES = CACHE / "frames"
+OVERRIDE = CACHE / "override.json"
+HOLD_SEC = 600     # 最低10分は引き継ぎを保持
+MAX_SEC = 86400    # 最長24時間
+MAXN = 100  # SUN5: max images per folder
 
 cfg = json.load(open(HOME / ".config/timewall.json"))
-if cfg.get("paused"):
-    print("timewall: paused")
-    sys.exit(0)
+paused = bool(cfg.get("paused"))  # AERIAL-PAUSE
 _lock = CACHE / "preview.lock"
 if _lock.exists() and time.time() - _lock.stat().st_mtime < 120:
     print("timewall: preview running")
@@ -128,36 +136,149 @@ def segs_sun(imgs, day_count):
             segs.append((sset + (nxt - sset) * j / nc, imgs[dc + j]))
     return segs
 
+SUN_DIRS = ["1_before_sunrise", "2_sunrise", "3_day", "4_sunset", "5_after_sunset"]  # SUN5
+
+def sun_sections(d):
+    # サブフォルダが1つでもあれば新方式(5区間)。なければ None(従来方式)
+    if not any((d / n).is_dir() for n in SUN_DIRS):
+        return None
+    secs = [list_images(d / n)[:MAXN] for n in SUN_DIRS]  # SUN5b
+    if not any(secs):
+        return None  # all empty: fall back to legacy (images in the folder itself)
+    return secs
+
+def segs_sun5(sec, tw_min):
+    obs = get_observer()
+    W = timedelta(minutes=max(0, min(120, tw_min)))
+    segs = []
+    for k in (-1, 0, 1):
+        day = now.date() + timedelta(days=k)
+        mid0 = datetime(day.year, day.month, day.day, tzinfo=now.tzinfo)
+        mid1 = mid0 + timedelta(days=1)
+        sn = sun(obs, date=day, tzinfo=now.tzinfo)
+        rise, sset = sn["sunrise"], sn["sunset"]
+        bounds = [mid0, rise - W, rise + W, sset - W, sset + W, mid1]
+        for i, imgs in enumerate(sec):
+            t0, t1 = bounds[i], bounds[i + 1]
+            n = len(imgs)
+            for j in range(n):
+                segs.append((t0 + (t1 - t0) * j / n, imgs[j]))
+    return segs
+
+def slideshow_images(s, desk, d):  # SLIDESRC
+    if (s.get("slideshow_source") or "auto") == "manual":
+        sd = Path(s.get("slideshow_dir") or f"~/Pictures/wp/desktop{desk}-slideshow").expanduser()
+        return list_images(sd)
+    base = Path(s.get("dir") or f"~/Pictures/wp/desktop{desk}").expanduser()
+    out, seen = [], set()
+    for folder in [base] + [base / n for n in SUN_DIRS]:
+        for f in list_images(folder):
+            try:
+                key = (f.name.lower(), f.stat().st_size)
+            except OSError:
+                continue
+            if key not in seen:
+                seen.add(key)
+                out.append(f)
+    return out
+
+def segs_slideshow(imgs, minutes):  # SLIDEFADE
+    k0 = int(now.timestamp() // 60 // minutes)
+    segs = []
+    for k in range(k0 - 1, k0 + 3):
+        t = datetime.fromtimestamp(k * minutes * 60, tz=now.tzinfo)
+        segs.append((t, imgs[k % len(imgs)]))
+    return segs
+
 # ---- 今のデスクトップ ----
 out = subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "org.kde.KWin.currentDesktop"],
                      capture_output=True, text=True).stdout.strip()
 desk = out if out else "1"
+try:  # SLIDEDIR: make ~/Pictures/wp/desktopN-slideshow for this desktop
+    (HOME / "Pictures/wp" / f"desktop{desk}-slideshow").mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+# ---- Aerial: このデスクトップで流す動画を、固定のパスにつなぐ ----  # AERIAL-VIDEO
+def update_aerial(desk):
+    import os, random
+    g = cfg.get("aerial", {})
+    ds = cfg["desktops"].get(desk, {}).get("aerial", {})
+    adir = Path(g.get("dir", "~/Videos/aerial")).expanduser()
+    link = HOME / ".cache/aerial/current.mp4"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    exts = (".mp4", ".webm", ".mkv", ".mov")
+    vids = sorted(p for p in adir.iterdir() if p.suffix.lower() in exts) if adir.is_dir() else []
+    def rnd():
+        return random.choice(vids) if vids else None
+    def default():
+        if g.get("mode", "same") == "random":
+            return rnd()
+        v = g.get("video")
+        if v:
+            return Path(v).expanduser()
+        return vids[0] if vids else None
+    mode = ds.get("source", "default")
+    if mode == "none" or not ds.get("use", True):  # AERIAL-UI2
+        target = None
+    elif mode == "file":
+        target = Path(ds.get("video", "")).expanduser()
+    elif mode == "random":
+        target = rnd()
+    else:
+        target = default()
+    try:
+        if target and target.is_file():
+            tmp = link.with_name("current.tmp")
+            if tmp.is_symlink() or tmp.exists():
+                tmp.unlink()
+            tmp.symlink_to(target)
+            os.replace(tmp, link)
+        else:
+            link.unlink(missing_ok=True)
+    except Exception as e:
+        print("aerial link skipped:", e)
+
+update_aerial(desk)
+
+if paused and "--lockframe" not in sys.argv:
+    print("timewall: paused (Aerial keeps working)")
+    sys.exit(0)
 s = cfg["desktops"].get(desk)
 if not s or s.get("mode", "off") == "off":
     print("desktop", desk, "is off; nothing to do")
     sys.exit(0)
 
 mode = s["mode"]
-d = Path(s.get("dir") or f"~/Pictures/wp/desktop{desk}").expanduser()
+if mode == "slideshow":  # SLIDEDIR2: slideshow has its own folder
+    d = Path(s.get("slideshow_dir") or s.get("dir") or f"~/Pictures/wp/desktop{desk}-slideshow").expanduser()
+else:
+    d = Path(s.get("dir") or f"~/Pictures/wp/desktop{desk}").expanduser()
 p = None
 slot = mode
 
 if mode == "static":
     p = Path(s["image"]).expanduser()
 elif mode == "slideshow":
-    imgs = list_images(d)
+    imgs = slideshow_images(s, desk, d)
     if imgs:
         minutes = max(3, min(60, int(s.get("minutes", 10))))
-        p = imgs[int(now.timestamp() // 60 // minutes) % len(imgs)]
+        p = pick(segs_slideshow(imgs, minutes), s.get("fade", False))  # SLIDEFADE
 elif mode == "schedule":
-    imgs = list_images(d)[:12]
-    times = s.get("times", [])[:12]
+    imgs = list_images(d)[:MAXN]
+    times = s.get("times", [])[:MAXN]
     if imgs and times:
         p = pick(segs_schedule(imgs, times), s.get("fade", False))
 elif mode == "sunpath":
-    imgs = list_images(d)[:12]
-    if imgs:
-        p = pick(segs_sun(imgs, s.get("day_count")), s.get("fade", False))
+    sec = sun_sections(d)  # SUN5
+    if sec is not None:
+        segs = segs_sun5(sec, int(s.get("twilight_min", 30)))
+        if segs:
+            p = pick(segs, s.get("fade", False))
+    else:
+        imgs = list_images(d)[:MAXN]
+        if imgs:
+            p = pick(segs_sun(imgs, s.get("day_count")), s.get("fade", False))
 else:
     print("desktop", desk, "unknown mode:", mode)
     sys.exit(0)
@@ -167,11 +288,45 @@ if not p or not Path(p).exists():
     sys.exit(1)
 
 p = Path(p)
+
+# ---- Aerial: ロック解除時のフレームを引き継ぐ ----
+base = str(p)
+if "--lockframe" in sys.argv:
+    _ao = s.get("aerial", {}) or {}
+    if _ao.get("after", "frame") == "timewall" or _ao.get("source") == "none" or _ao.get("use") is False:
+        LOCKFRAME.unlink(missing_ok=True)
+        print("timewall: this desktop keeps the timewall image after unlock")
+        sys.exit(0)
+    if LOCKFRAME.exists() and LOCKFRAME.stat().st_size > 10000:
+        FRAMES.mkdir(parents=True, exist_ok=True)
+        dst = FRAMES / f"lock-{int(time.time())}.png"
+        shutil.move(str(LOCKFRAME), str(dst))
+        OVERRIDE.write_text(json.dumps({"desk": desk, "base": base, "image": str(dst), "created": time.time()}))
+        for old in sorted(FRAMES.glob("lock-*.png"))[:-5]:
+            old.unlink()
+        p = dst
+        slot = "lockframe"
+        force_apply = True
+    else:
+        print("timewall: no lockframe")
+        sys.exit(0)
+else:
+    try:
+        ov = json.loads(OVERRIDE.read_text())
+    except Exception:
+        ov = None
+    if ov and ov.get("desk") == desk:
+        age = time.time() - ov.get("created", 0)
+        if Path(ov.get("image", "")).exists() and age < MAX_SEC and (age < HOLD_SEC or ov.get("base") == base) and (s.get("aerial", {}) or {}).get("after", "frame") != "timewall":
+            p = Path(ov["image"])
+            slot = "lockframe"
+        else:
+            OVERRIDE.unlink(missing_ok=True)
+
 state = CACHE / "last_applied"
 if not force_apply and state.exists() and state.read_text() == str(p):
     print("desktop", desk, "unchanged", p.name)
     sys.exit(0)
-state.write_text(str(p))
 print("desktop", desk, "slot", slot, p)
 
 if cfg.get("hello_sync", False) and Path(HELLO).exists():
@@ -202,5 +357,18 @@ desktops().forEach(function(d) {{
   d.writeConfig("Image", img);
 }});
 """
-subprocess.run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
-                "org.kde.PlasmaShell.evaluateScript", js])
+# SUN5c: wait for plasmashell, retry, and record "applied" only after success
+_ok = False
+for _i in range(30):
+    _r = subprocess.run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
+                         "org.kde.PlasmaShell.evaluateScript", js],
+                        capture_output=True, text=True)
+    if _r.returncode == 0 and "Cannot find" not in _r.stderr and "does not exist" not in _r.stderr:
+        _ok = True
+        break
+    time.sleep(2)
+if _ok:
+    state.write_text(str(p))
+else:
+    print("timewall: plasmashell not ready; will retry next run")
+    sys.exit(1)
